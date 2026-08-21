@@ -1,16 +1,31 @@
 # dynawp
 
-CLI tool to create macOS light/dark dynamic wallpapers from images, solid hex colors, or a mix of both.
+Create wallpapers that switch between light and dark mode on macOS.
 
-## Requirements
+```bash
+# from images
+dynawp sunrise.jpg midnight.jpg --set
 
-macOS 10.15 (Catalina) or later with Python 3.10+.
+# or even hex colors
+dynawp '#ffffff' '#1e1e2e' --set
+```
+
+Requires macOS 10.15 (Catalina) or later with Python 3.10+.
 
 ## Installation
 
-Install via pip:
+Install with [pipx](https://pipx.pypa.io/) (recommended):
 
 ```bash
+brew install pipx   # if you don't have it
+pipx install .
+```
+
+Or with a virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install .
 ```
 
@@ -22,43 +37,39 @@ pip install -e .
 
 ## Usage
 
-### Basic examples
+The first argument becomes the Light-mode frame, the second the Dark-mode frame - keep that order in mind when mixing images and colors.
 
 ```bash
-# create from two images
-dynawp light.jpg dark.jpg
+# two images
+dynawp sunrise.jpg midnight.jpg
 
-# create from solid hex colors (auto-detects display resolution)
+# solid hex colors
 dynawp '#ffffff' '#1e1e2e'
 dynawp '#fff' '#000'
 
-# mix an image with a solid background color
-dynawp light.png '#181825'
-dynawp '#f5e0dc' dark.png
+# mix an image with a color background
+dynawp sunrise.png '#181825'
+dynawp '#f5e0dc' midnight.png
 
-# create and set as active wallpaper immediately
-dynawp light.jpg dark.jpg --set
+# create and apply immediately
+dynawp sunrise.jpg midnight.jpg --set
 
-# specify output path and resolution
-dynawp light.jpg dark.jpg -r 3840x2160 -o ~/Pictures/wallpaper.heic
+# explicit output path and resolution
+dynawp sunrise.jpg midnight.jpg -r 3840x2160 -o ~/Pictures/wallpaper.heic
 ```
 
-### Inspect an existing wallpaper
+Every created file is re-opened and validated automatically, so a silent failure never leaves you with a broken wallpaper.
 
-```bash
-dynawp --info wallpaper.heic
-```
-
-### CLI options
+### Options
 
 | Option | Description |
 | :--- | :--- |
-| `light` | Light-mode image path or hex color (e.g. `#ffffff`, `#fff`, `ffffff`) |
-| `dark` | Dark-mode image path or hex color (e.g. `#000000`, `#000`, `000000`) |
-| `-o`, `--output` | Output file path (default: `output.heic`); `.heic` is appended when no extension is given |
-| `-r`, `--resolution` | Target resolution (`WIDTHxHEIGHT` or `auto`) |
-| `--set` | Apply the wallpaper to all connected displays after generation |
-| `--info <file>` | Inspect metadata and frame dimensions of a HEIC wallpaper |
+| `light dark` | Image paths or hex colors (`#ffffff`, `fff`) for the Light and Dark frames |
+| `-o`, `--output` | Output file path (default: `output.heic`); `.heic` is appended when no extension is given, other extensions are rejected |
+| `-r`, `--resolution` | Target resolution (`WIDTHxHEIGHT`). Defaults to your primary display's resolution, same as `auto` |
+| `-s`, `--set` | Apply the wallpaper to all connected displays after generation |
+| `-i`, `--info <file>` | Inspect metadata and frame dimensions of a HEIC wallpaper |
+| `-v`, `--version` | Show version |
 | `-h`, `--help` | Show help message |
 
 ## Supported formats
@@ -66,43 +77,23 @@ dynawp --info wallpaper.heic
 - **Images**: JPEG (`.jpg`, `.jpeg`), PNG (`.png`), HEIC/HEIF (`.heic`, `.heif`), TIFF (`.tiff`, `.tif`), WebP (`.webp`)
 - **Colors**: 6-digit hex (`#ffffff`, `ffffff`) and 3-digit shorthand (`#fff`, `fff`), case-insensitive
 
-If no `-r` is given, output matches your primary display's resolution (same as `-r auto`). Images that don't match the target resolution are scaled to cover and center-cropped.
+If a bare hex string happens to name an existing file on disk, it is treated as a file path - prefix with `#` to force color interpretation.
+
+Images that don't match the target resolution are scaled to cover and center-cropped.
+
+## Exit codes
+
+| Code | Meaning |
+| :--- | :--- |
+| 0 | Success |
+| 1 | Error |
+| 130 | Interrupted |
 
 ## Shell completions
 
-Completion scripts are provided in the `completions/` directory for `zsh`, `bash`, and `fish`.
-
-### Zsh
-
-Add the directory to your `fpath` in `~/.zshrc`:
-
-```zsh
-fpath=(/path/to/dynamic-wallpaper/completions $fpath)
-autoload -Uz compinit && compinit
-```
-
-Or copy `completions/_dynawp` to a directory in your existing `fpath` (e.g. `~/.zfunc`).
-
-### Bash
-
-Source the completion script in `~/.bashrc`:
-
-```bash
-source /path/to/dynamic-wallpaper/completions/dynawp.bash
-```
-
-### Fish
-
-Copy the completion script into your fish completions folder:
-
-```fish
-mkdir -p ~/.config/fish/completions
-cp completions/dynawp.fish ~/.config/fish/completions/
-```
+Completion scripts for zsh, bash, and fish live in [`completions/`](completions/README.md).
 
 ## Tests
-
-Run the test suite with:
 
 ```bash
 python -m unittest discover -s tests -v
@@ -110,7 +101,7 @@ python -m unittest discover -s tests -v
 
 ## How it works
 
-macOS dynamic wallpapers are multi-image HEIC files with embedded Apple metadata. `dynawp` uses native Core Graphics / Quartz APIs to package a 2-frame HEIC container (frame 0 for Light mode, frame 1 for Dark mode) and embeds the `apple_desktop:apr` appearance payload.
+macOS dynamic wallpapers are multi-image HEIC files with embedded Apple metadata. dynawp uses native Quartz APIs to package a 2-frame HEIC (Light at index 0, Dark at index 1) with the `apple_desktop:apr` appearance payload.
 
 ## License
 
