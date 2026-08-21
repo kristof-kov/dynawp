@@ -84,7 +84,7 @@ python -m unittest discover -s tests -v
 
 If the light and dark images have different resolutions:
 - `dwp` warns about the dimension mismatch.
-- The smaller image is scaled to cover and center-cropped to match the larger image's exact dimensions.
+- Images are scaled to cover and center-cropped to match the bounding dimensions (`max(width)` × `max(height)`).
 
 ## How It Works
 
