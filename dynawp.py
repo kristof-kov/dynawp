@@ -1,4 +1,4 @@
-"""dwp — Create macOS Light/Dark dynamic wallpapers."""
+"""dynawp - create macOS light/dark dynamic wallpapers."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from Foundation import NSURL
 
 
 class DWPError(Exception):
-    """Base exception for dwp errors."""
+    """Base exception for dynawp errors."""
     pass
 
 
@@ -365,7 +365,7 @@ def inspect_file(path: str) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="dwp",
+        prog="dynawp",
         description="Create macOS Light/Dark dynamic wallpapers from images or hex color codes",
     )
 

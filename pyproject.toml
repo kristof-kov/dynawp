@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dwp"
+name = "dynawp"
 version = "1.0.0"
 description = "Create macOS Light/Dark dynamic wallpapers from images or hex color codes"
 readme = "README.md"
@@ -17,4 +17,8 @@ dependencies = [
 ]
 
 [project.scripts]
-dwp = "dwp:main"
+dynawp = "dynawp:main"
+dwp = "dynawp:main"
+
+[tool.setuptools]
+py-modules = ["dynawp"]
