@@ -143,6 +143,53 @@ def create_wallpaper(light_img, dark_img, output_path: str) -> None:
         raise SystemExit(1)
 
 
+def verify_output(path: str) -> bool:
+    """Re-open the HEIC and validate image count, dimensions, and metadata."""
+    url = NSURL.fileURLWithPath_(os.path.abspath(path))
+    source = Quartz.CGImageSourceCreateWithURL(url, None)
+    if not source:
+        print("⚠️ verification failed: cannot re-open file", file=sys.stderr)
+        return False
+
+    count = Quartz.CGImageSourceGetCount(source)
+    if count != 2:
+        print(f"⚠️ verification failed: expected 2 images, got {count}", file=sys.stderr)
+        return False
+
+    print(f"✅ Dynamic wallpaper created: {path}")
+    print(f"   Images: {count}")
+
+    for i in range(count):
+        props = Quartz.CGImageSourceCopyPropertiesAtIndex(source, i, None)
+        w = props.get("PixelWidth", "?") if props else "?"
+        h = props.get("PixelHeight", "?") if props else "?"
+        label = "Light" if i == 0 else "Dark "
+        print(f"   {label} (index {i}): {w}×{h}")
+
+    metadata = Quartz.CGImageSourceCopyMetadataAtIndex(source, 0, None)
+    if not metadata:
+        print("   Metadata: ✗ no metadata on first image", file=sys.stderr)
+        return False
+
+    tag = Quartz.CGImageMetadataCopyTagWithPath(metadata, None, APR_PATH)
+    if not tag:
+        print("   Metadata: ✗ apple_desktop:apr NOT FOUND", file=sys.stderr)
+        return False
+
+    value = Quartz.CGImageMetadataTagCopyValue(tag)
+    try:
+        plist = plistlib.loads(base64.b64decode(value))
+        if plist == {"l": 0, "d": 1}:
+            print("   Metadata: ✓ valid (apple_desktop:apr)")
+            return True
+        else:
+            print(f"   Metadata: ✗ unexpected plist content: {plist}", file=sys.stderr)
+            return False
+    except Exception as exc:
+        print(f"   Metadata: ✗ failed to decode apr payload: {exc}", file=sys.stderr)
+        return False
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="dwp",
