@@ -213,6 +213,51 @@ def set_wallpaper(path: str) -> None:
         raise SystemExit(1)
 
 
+def inspect_file(path: str) -> None:
+    url = NSURL.fileURLWithPath_(os.path.abspath(path))
+    source = Quartz.CGImageSourceCreateWithURL(url, None)
+    if not source:
+        print(f"Error: cannot read file: {path}", file=sys.stderr)
+        raise SystemExit(1)
+
+    count = Quartz.CGImageSourceGetCount(source)
+    print(f"File: {path}")
+    print(f"Images: {count}")
+
+    for i in range(count):
+        props = Quartz.CGImageSourceCopyPropertiesAtIndex(source, i, None)
+        w = props.get("PixelWidth", "?") if props else "?"
+        h = props.get("PixelHeight", "?") if props else "?"
+        print(f"  [{i}] {w}×{h}")
+
+    metadata = Quartz.CGImageSourceCopyMetadataAtIndex(source, 0, None)
+    if not metadata:
+        print("Dynamic wallpaper: ✗ no metadata found")
+        return
+
+    tag = Quartz.CGImageMetadataCopyTagWithPath(metadata, None, APR_PATH)
+    if tag:
+        value = Quartz.CGImageMetadataTagCopyValue(tag)
+        try:
+            plist = plistlib.loads(base64.b64decode(value))
+            print("Dynamic wallpaper: ✓ appearance-based (apr)")
+            print(f"  Light → index {plist.get('l')}, Dark → index {plist.get('d')}")
+        except Exception:
+            print("Dynamic wallpaper: ✗ apr metadata present but malformed")
+        return
+
+    for key, label in [
+        (f"{APPLE_PREFIX}:solar", "solar-based"),
+        (f"{APPLE_PREFIX}:h24", "time-based"),
+    ]:
+        t = Quartz.CGImageMetadataCopyTagWithPath(metadata, None, key)
+        if t:
+            print(f"Dynamic wallpaper: ✓ {label} ({key.split(':')[1]})")
+            return
+
+    print("Dynamic wallpaper: ✗ no Apple dynamic desktop metadata found")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="dwp",
