@@ -7,7 +7,7 @@ _dynawp() {
     local resolutions="auto 3840x2160 5120x2880 2560x1440 1920x1080 2880x1800 3024x1964 3456x2234"
 
     case "$prev" in
-        --info)
+        -i|--info)
             COMPREPLY=($(compgen -f -X "!*.$heic_exts" -- "$cur"))
             return 0
             ;;
@@ -22,7 +22,7 @@ _dynawp() {
     esac
 
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-h --help --info -o --output -r --resolution --set" -- "$cur"))
+        COMPREPLY=($(compgen -W "-h --help -i --info -o --output -r --resolution -s --set -v --version" -- "$cur"))
         return 0
     fi
 

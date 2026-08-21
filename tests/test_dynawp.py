@@ -161,12 +161,22 @@ class TestCLIArgs(unittest.TestCase):
         self.assertFalse(args.set)
 
     def test_parse_args_with_flags(self):
-        args = dynawp.parse_args(["#fff", "#000", "-r", "1920x1080", "-o", "custom.heic", "--set"])
+        args = dynawp.parse_args(["#fff", "#000", "-r", "1920x1080", "-o", "custom.heic", "-s"])
         self.assertEqual(args.light, "#fff")
         self.assertEqual(args.dark, "#000")
         self.assertEqual(args.resolution, "1920x1080")
         self.assertEqual(args.output, "custom.heic")
         self.assertTrue(args.set)
+
+    def test_parse_args_short_flags_match_long_flags(self):
+        self.assertEqual(
+            dynawp.parse_args(["-i", "wall.heic"]).info,
+            dynawp.parse_args(["--info", "wall.heic"]).info,
+        )
+        self.assertTrue(dynawp.parse_args(["#fff", "#000", "--set"]).set)
+        with self.assertRaises(SystemExit) as ctx:
+            dynawp.parse_args(["-v"])
+        self.assertEqual(ctx.exception.code, 0)
 
     def test_parse_args_version_flag(self):
         with self.assertRaises(SystemExit) as ctx:

@@ -360,8 +360,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Create macOS Light/Dark dynamic wallpapers from images or hex color codes",
     )
 
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("--info", metavar="FILE",
+    parser.add_argument("--version", "-v", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument("--info", "-i", metavar="FILE",
                         help="Inspect an existing dynamic wallpaper")
     parser.add_argument("light", nargs="?", help="Light-mode image path or hex color (e.g. '#ffffff')")
     parser.add_argument("dark", nargs="?", help="Dark-mode image path or hex color (e.g. '#000000')")
@@ -369,7 +369,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Output path (default: output.heic)")
     parser.add_argument("-r", "--resolution", metavar="WxH",
                         help="Target resolution: WIDTHxHEIGHT (e.g. 3840x2160) or 'auto'")
-    parser.add_argument("--set", action="store_true",
+    parser.add_argument("--set", "-s", action="store_true",
                         help="Set as wallpaper on all displays")
 
     args = parser.parse_args(argv)
