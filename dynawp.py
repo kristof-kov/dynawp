@@ -48,8 +48,12 @@ def get_primary_screen_resolution() -> tuple[int, int]:
             h = int(round(frame.size.height * scale))
             if w > 0 and h > 0:
                 return w, h
-    except Exception:
-        pass
+    except Exception as exc:
+        print(
+            f"warning: could not detect screen resolution ({exc}), "
+            f"falling back to {DEFAULT_COLOR_WIDTH}x{DEFAULT_COLOR_HEIGHT}",
+            file=sys.stderr,
+        )
     return DEFAULT_COLOR_WIDTH, DEFAULT_COLOR_HEIGHT
 
 
@@ -105,7 +109,7 @@ def is_hex_color(val: str) -> bool:
     return HEX_COLOR_PATTERN.fullmatch(stripped) is not None
 
 
-def create_color_image(r: float, g: float, b: float, width: int, height: int):
+def create_color_image(r: float, g: float, b: float, width: int, height: int) -> "Quartz.CGImageRef":
     """Create a solid color CGImageRef with given sRGB color and dimensions. Raises DWPError on failure."""
     if width <= 0 or height <= 0:
         raise DWPError(f"Color image dimensions must be positive integers, got {width}x{height}")
@@ -126,7 +130,7 @@ def create_color_image(r: float, g: float, b: float, width: int, height: int):
     return img
 
 
-def load_image(path: str) -> tuple:
+def load_image(path: str) -> tuple["Quartz.CGImageRef", int, int]:
     """Return (CGImageRef, width, height). Raises DWPError on failure."""
     url = NSURL.fileURLWithPath_(os.path.abspath(path))
     source = Quartz.CGImageSourceCreateWithURL(url, None)
@@ -144,7 +148,7 @@ def load_image(path: str) -> tuple:
     return image, w, h
 
 
-def resize_image(image, target_w: int, target_h: int):
+def resize_image(image: "Quartz.CGImageRef", target_w: int, target_h: int) -> "Quartz.CGImageRef":
     """Scale to cover, then center-crop to exact target size. Raises DWPError on failure."""
     src_w = Quartz.CGImageGetWidth(image)
     src_h = Quartz.CGImageGetHeight(image)
@@ -179,7 +183,7 @@ def resize_image(image, target_w: int, target_h: int):
     return img
 
 
-def _load_or_create(arg: str, target: tuple[int, int]) -> tuple:
+def _load_or_create(arg: str, target: tuple[int, int]) -> tuple["Quartz.CGImageRef", int, int]:
     """Return (CGImageRef, width, height) from an image path or hex color, sized to target."""
     color = parse_hex_color(arg) if is_hex_color(arg) else None
     if color is not None:
@@ -190,7 +194,7 @@ def _load_or_create(arg: str, target: tuple[int, int]) -> tuple:
     return load_image(arg)
 
 
-def resolve_inputs(light_arg: str, dark_arg: str, target_res: tuple[int, int]) -> tuple:
+def resolve_inputs(light_arg: str, dark_arg: str, target_res: tuple[int, int]) -> tuple["Quartz.CGImageRef", "Quartz.CGImageRef", int, int]:
     """
     Validate and load/create light and dark CGImages at the target resolution.
     Images are scaled to cover and center-cropped if their size differs.
@@ -214,7 +218,7 @@ def _build_apr_payload() -> str:
     return base64.b64encode(bplist).decode("ascii")
 
 
-def _build_metadata(base64_apr: str):
+def _build_metadata(base64_apr: str) -> "Quartz.CGImageMetadataRef":
     """Return a CGImageMetadataRef with the apple_desktop:apr tag. Raises DWPError on failure."""
     metadata = Quartz.CGImageMetadataCreateMutable()
     Quartz.CGImageMetadataRegisterNamespaceForPrefix(
@@ -464,6 +468,9 @@ def main(argv: list[str] | None = None) -> None:
     except DWPError as err:
         print(f"Error: {err}", file=sys.stderr)
         sys.exit(1)
+    except KeyboardInterrupt:
+        print("Interrupted", file=sys.stderr)
+        sys.exit(130)
 
 
 if __name__ == "__main__":
