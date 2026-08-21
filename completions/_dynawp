@@ -1,0 +1,23 @@
+#compdef dynawp dwp
+
+_dynawp() {
+    local -a image_files
+    image_files=(
+        '*.jpg' '*.jpeg' '*.JPG' '*.JPEG'
+        '*.png' '*.PNG'
+        '*.heic' '*.heif' '*.HEIC' '*.HEIF'
+        '*.tiff' '*.tif' '*.TIFF' '*.TIF'
+        '*.webp' '*.WEBP'
+    )
+
+    _arguments -s -S \
+        '(-h --help)'{-h,--help}'[show help message]' \
+        '(--info -o --output -r --resolution --set)'--info='[inspect an existing dynamic wallpaper]:dynamic wallpaper:_files -g "*.heic *.heif *.HEIC *.HEIF"' \
+        '(-o --output)'{-o,--output}'[output path (default: output.heic)]:output file:_files -g "*.heic *.HEIC"' \
+        '(-r --resolution)'{-r,--resolution}'[target resolution (WIDTHxHEIGHT or auto)]:resolution:(auto 3840x2160 5120x2880 2560x1440 1920x1080 2880x1800 3024x1964 3456x2234)' \
+        '--set[set as wallpaper on all displays]' \
+        '1:light image or hex color:_files -g "${(j: :)image_files}"' \
+        '2:dark image or hex color:_files -g "${(j: :)image_files}"'
+}
+
+_dynawp "$@"
