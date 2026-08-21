@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import os
+import plistlib
 import sys
 
 import Quartz
@@ -12,6 +14,11 @@ from Foundation import NSURL
 SUPPORTED_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".heic", ".heif", ".tiff", ".tif", ".webp",
 }
+
+APPLE_NAMESPACE = "http://ns.apple.com/namespace/1.0/"
+APPLE_PREFIX = "apple_desktop"
+APR_TAG = "apr"
+APR_PATH = f"{APPLE_PREFIX}:{APR_TAG}"
 
 
 def load_image(path: str) -> tuple:
@@ -78,6 +85,62 @@ def reconcile_dimensions(light_img, lw, lh, dark_img, dw, dh):
         print(f"   Resized light image → {target_w}×{target_h}", file=sys.stderr)
 
     return light_img, dark_img, target_w, target_h
+
+
+def _build_apr_payload() -> str:
+    """Return base64-encoded binary plist for apple_desktop:apr."""
+    plist_data = {"l": 0, "d": 1}
+    bplist = plistlib.dumps(plist_data, fmt=plistlib.FMT_BINARY)
+    return base64.b64encode(bplist).decode("ascii")
+
+
+def _build_metadata(base64_apr: str):
+    """Return a CGImageMetadataRef with the apple_desktop:apr tag."""
+    metadata = Quartz.CGImageMetadataCreateMutable()
+    Quartz.CGImageMetadataRegisterNamespaceForPrefix(
+        metadata, APPLE_NAMESPACE, APPLE_PREFIX, None,
+    )
+
+    tag = Quartz.CGImageMetadataTagCreate(
+        APPLE_NAMESPACE,
+        APPLE_PREFIX,
+        APR_TAG,
+        Quartz.kCGImageMetadataTypeString,
+        base64_apr,
+    )
+    if not tag:
+        print("Error: failed to create metadata tag", file=sys.stderr)
+        raise SystemExit(1)
+
+    ok = Quartz.CGImageMetadataSetTagWithPath(metadata, None, APR_PATH, tag)
+    if not ok:
+        print("Error: failed to set metadata tag path", file=sys.stderr)
+        raise SystemExit(1)
+
+    return metadata
+
+
+def create_wallpaper(light_img, dark_img, output_path: str) -> None:
+    """Create a 2-image HEIC with apple_desktop:apr metadata."""
+    base64_apr = _build_apr_payload()
+    metadata = _build_metadata(base64_apr)
+
+    out_url = NSURL.fileURLWithPath_(os.path.abspath(output_path))
+    destination = Quartz.CGImageDestinationCreateWithURL(
+        out_url, "public.heic", 2, None,
+    )
+    if not destination:
+        print("Error: failed to create HEIC destination", file=sys.stderr)
+        raise SystemExit(1)
+
+    Quartz.CGImageDestinationAddImageAndMetadata(
+        destination, light_img, metadata, None,
+    )
+    Quartz.CGImageDestinationAddImage(destination, dark_img, None)
+
+    if not Quartz.CGImageDestinationFinalize(destination):
+        print("Error: failed to finalize HEIC file", file=sys.stderr)
+        raise SystemExit(1)
 
 
 def parse_args() -> argparse.Namespace:
