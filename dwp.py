@@ -6,9 +6,30 @@ import argparse
 import os
 import sys
 
+import Quartz
+from Foundation import NSURL
+
 SUPPORTED_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".heic", ".heif", ".tiff", ".tif", ".webp",
 }
+
+
+def load_image(path: str) -> tuple:
+    """Return (CGImageRef, width, height)."""
+    url = NSURL.fileURLWithPath_(os.path.abspath(path))
+    source = Quartz.CGImageSourceCreateWithURL(url, None)
+    if not source:
+        print(f"Error: Cannot read image: {path}", file=sys.stderr)
+        raise SystemExit(1)
+
+    image = Quartz.CGImageSourceCreateImageAtIndex(source, 0, None)
+    if not image:
+        print(f"Error: Cannot decode image: {path}", file=sys.stderr)
+        raise SystemExit(1)
+
+    w = Quartz.CGImageGetWidth(image)
+    h = Quartz.CGImageGetHeight(image)
+    return image, w, h
 
 
 def parse_args() -> argparse.Namespace:
