@@ -10,6 +10,7 @@ from unittest.mock import patch, MagicMock
 import Quartz
 import dynawp
 from dynawp import DWPError
+from Foundation import NSURL
 
 
 class TestHexColors(unittest.TestCase):
@@ -118,24 +119,6 @@ class TestImageOperations(unittest.TestCase):
         with self.assertRaises(DWPError):
             dynawp.resize_image(src_img, 100, -50)
 
-    def test_reconcile_dimensions_same(self):
-        img1 = dynawp.create_color_image(1.0, 0.0, 0.0, 100, 100)
-        img2 = dynawp.create_color_image(0.0, 1.0, 0.0, 100, 100)
-        out1, out2, w, h = dynawp.reconcile_dimensions(img1, 100, 100, img2, 100, 100)
-        self.assertEqual((w, h), (100, 100))
-
-    def test_reconcile_dimensions_different_max_envelope(self):
-        # light=1000x2000 (tall) vs dark=1900x1100 (wide)
-        # target should be max(w) x max(h) = 1900x2000
-        img1 = dynawp.create_color_image(1.0, 0.0, 0.0, 1000, 2000)
-        img2 = dynawp.create_color_image(0.0, 1.0, 0.0, 1900, 1100)
-        out1, out2, w, h = dynawp.reconcile_dimensions(img1, 1000, 2000, img2, 1900, 1100)
-        self.assertEqual((w, h), (1900, 2000))
-        self.assertEqual(Quartz.CGImageGetWidth(out1), 1900)
-        self.assertEqual(Quartz.CGImageGetHeight(out1), 2000)
-        self.assertEqual(Quartz.CGImageGetWidth(out2), 1900)
-        self.assertEqual(Quartz.CGImageGetHeight(out2), 2000)
-
 
 class TestDWPErrorHandling(unittest.TestCase):
     def test_load_image_nonexistent(self):
@@ -155,6 +138,13 @@ class TestDWPErrorHandling(unittest.TestCase):
 
 
 class TestWallpaperEndToEnd(unittest.TestCase):
+    def _write_test_image(self, path: str, w: int, h: int, r: float, g: float, b: float) -> None:
+        img = dynawp.create_color_image(r, g, b, w, h)
+        url = NSURL.fileURLWithPath_(path)
+        dest = Quartz.CGImageDestinationCreateWithURL(url, "public.png", 1, None)
+        Quartz.CGImageDestinationAddImage(dest, img, None)
+        self.assertTrue(Quartz.CGImageDestinationFinalize(dest))
+
     def test_create_and_verify_solid_wallpaper(self):
         with tempfile.NamedTemporaryFile(suffix=".heic", delete=False) as tmp:
             tmp_path = tmp.name
@@ -174,6 +164,41 @@ class TestWallpaperEndToEnd(unittest.TestCase):
         light_img, dark_img, w, h = dynawp.resolve_inputs("#fff", "#000", target_res=(128, 128))
         self.assertEqual((w, h), (128, 128))
         self.assertEqual(Quartz.CGImageGetWidth(light_img), 128)
+
+    def test_resolve_inputs_image_and_color_mixed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            img_path = os.path.join(tmpdir, "light.png")
+            self._write_test_image(img_path, 100, 50, 1.0, 0.0, 0.0)
+
+            light_img, dark_img, w, h = dynawp.resolve_inputs(img_path, "#000", target_res=(64, 64))
+            self.assertEqual((w, h), (64, 64))
+            self.assertEqual(Quartz.CGImageGetWidth(light_img), 64)
+            self.assertEqual(Quartz.CGImageGetHeight(light_img), 64)
+            self.assertEqual(Quartz.CGImageGetWidth(dark_img), 64)
+
+    def test_resolve_inputs_color_and_image_mixed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            img_path = os.path.join(tmpdir, "dark.png")
+            self._write_test_image(img_path, 100, 50, 0.0, 0.0, 1.0)
+
+            light_img, dark_img, w, h = dynawp.resolve_inputs("#fff", img_path, target_res=(64, 64))
+            self.assertEqual((w, h), (64, 64))
+            self.assertEqual(Quartz.CGImageGetWidth(light_img), 64)
+            self.assertEqual(Quartz.CGImageGetWidth(dark_img), 64)
+            self.assertEqual(Quartz.CGImageGetHeight(dark_img), 64)
+
+    def test_resolve_inputs_two_images_different_sizes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            light_path = os.path.join(tmpdir, "light.png")
+            dark_path = os.path.join(tmpdir, "dark.png")
+            self._write_test_image(light_path, 100, 50, 1.0, 1.0, 1.0)
+            self._write_test_image(dark_path, 30, 70, 0.0, 0.0, 0.0)
+
+            light_img, dark_img, w, h = dynawp.resolve_inputs(light_path, dark_path, target_res=(80, 80))
+            self.assertEqual((w, h), (80, 80))
+            for img in (light_img, dark_img):
+                self.assertEqual(Quartz.CGImageGetWidth(img), 80)
+                self.assertEqual(Quartz.CGImageGetHeight(img), 80)
 
 
 class TestCLIArgs(unittest.TestCase):

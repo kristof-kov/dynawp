@@ -177,23 +177,32 @@ def resize_image(image, target_w: int, target_h: int):
     return img
 
 
-def reconcile_dimensions(light_img, lw: int, lh: int, dark_img, dw: int, dh: int):
-    """Resize images to max(lw, dw) x max(lh, dh) if dimensions differ. Returns (light, dark, w, h)."""
-    if lw == dw and lh == dh:
-        return light_img, dark_img, lw, lh
+def _load_or_create(arg: str, target: tuple[int, int]) -> tuple:
+    """Return (CGImageRef, width, height) from an image path or hex color, sized to target."""
+    color = parse_hex_color(arg) if is_hex_color(arg) else None
+    if color is not None:
+        r, g, b = color
+        img = create_color_image(r, g, b, target[0], target[1])
+        return img, target[0], target[1]
+    _validate_image_file(arg)
+    return load_image(arg)
 
-    target_w = max(lw, dw)
-    target_h = max(lh, dh)
-    print(f"⚠️ Dimension mismatch: light={lw}×{lh}, dark={dw}×{dh}", file=sys.stderr)
 
-    if (lw, lh) != (target_w, target_h):
-        light_img = resize_image(light_img, target_w, target_h)
-        print(f"   Resized light image → {target_w}×{target_h}", file=sys.stderr)
-    if (dw, dh) != (target_w, target_h):
-        dark_img = resize_image(dark_img, target_w, target_h)
-        print(f"   Resized dark image → {target_w}×{target_h}", file=sys.stderr)
+def resolve_inputs(light_arg: str, dark_arg: str, target_res: tuple[int, int]) -> tuple:
+    """
+    Validate and load/create light and dark CGImages at the target resolution.
+    Images are scaled to cover and center-cropped if their size differs.
+    Returns (light_img, dark_img, width, height).
+    """
+    light_img, lw, lh = _load_or_create(light_arg, target_res)
+    dark_img, dw, dh = _load_or_create(dark_arg, target_res)
 
-    return light_img, dark_img, target_w, target_h
+    if (lw, lh) != target_res:
+        light_img = resize_image(light_img, target_res[0], target_res[1])
+    if (dw, dh) != target_res:
+        dark_img = resize_image(dark_img, target_res[0], target_res[1])
+
+    return light_img, dark_img, target_res[0], target_res[1]
 
 
 def _build_apr_payload() -> str:
@@ -414,66 +423,6 @@ def _validate_image_file(path: str) -> None:
         )
 
 
-def resolve_inputs(light_arg: str, dark_arg: str, target_res: tuple[int, int] | None = None) -> tuple:
-    """
-    Validate and load/create light and dark CGImages.
-    Returns (light_img, dark_img, width, height).
-    """
-    light_is_color = is_hex_color(light_arg)
-    dark_is_color = is_hex_color(dark_arg)
-
-    if not light_is_color:
-        _validate_image_file(light_arg)
-    if not dark_is_color:
-        _validate_image_file(dark_arg)
-
-    if light_is_color and dark_is_color:
-        lr, lg, lb = parse_hex_color(light_arg)  # type: ignore[misc]
-        dr, dg, db = parse_hex_color(dark_arg)   # type: ignore[misc]
-        w, h = target_res if target_res is not None else get_primary_screen_resolution()
-        light_img = create_color_image(lr, lg, lb, w, h)
-        dark_img = create_color_image(dr, dg, db, w, h)
-        return light_img, dark_img, w, h
-
-    elif not light_is_color and not dark_is_color:
-        light_img, lw, lh = load_image(light_arg)
-        dark_img, dw, dh = load_image(dark_arg)
-        if target_res is not None:
-            tw, th = target_res
-            if (lw, lh) != (tw, th):
-                light_img = resize_image(light_img, tw, th)
-            if (dw, dh) != (tw, th):
-                dark_img = resize_image(dark_img, tw, th)
-            return light_img, dark_img, tw, th
-        return reconcile_dimensions(light_img, lw, lh, dark_img, dw, dh)
-
-    elif not light_is_color and dark_is_color:
-        light_img, lw, lh = load_image(light_arg)
-        dr, dg, db = parse_hex_color(dark_arg)  # type: ignore[misc]
-        if target_res is not None:
-            tw, th = target_res
-            if (lw, lh) != (tw, th):
-                light_img = resize_image(light_img, tw, th)
-            dark_img = create_color_image(dr, dg, db, tw, th)
-            return light_img, dark_img, tw, th
-        else:
-            dark_img = create_color_image(dr, dg, db, lw, lh)
-            return light_img, dark_img, lw, lh
-
-    else:  # light_is_color and not dark_is_color
-        dark_img, dw, dh = load_image(dark_arg)
-        lr, lg, lb = parse_hex_color(light_arg)  # type: ignore[misc]
-        if target_res is not None:
-            tw, th = target_res
-            if (dw, dh) != (tw, th):
-                dark_img = resize_image(dark_img, tw, th)
-            light_img = create_color_image(lr, lg, lb, tw, th)
-            return light_img, dark_img, tw, th
-        else:
-            light_img = create_color_image(lr, lg, lb, dw, dh)
-            return light_img, dark_img, dw, dh
-
-
 def main(argv: list[str] | None = None) -> None:
     try:
         args = parse_args(argv)
@@ -482,8 +431,8 @@ def main(argv: list[str] | None = None) -> None:
             inspect_file(args.info)
             return
 
-        target_res = parse_resolution(args.resolution) if args.resolution else None
-        light_img, dark_img, _w, _h = resolve_inputs(args.light, args.dark, target_res=target_res)
+        target_res = parse_resolution(args.resolution) if args.resolution else get_primary_screen_resolution()
+        light_img, dark_img, _w, _h = resolve_inputs(args.light, args.dark, target_res)
 
         create_wallpaper(light_img, dark_img, args.output)
 

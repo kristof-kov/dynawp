@@ -66,7 +66,7 @@ dynawp --info wallpaper.heic
 - **Images**: JPEG (`.jpg`, `.jpeg`), PNG (`.png`), HEIC/HEIF (`.heic`, `.heif`), TIFF (`.tiff`, `.tif`), WebP (`.webp`)
 - **Colors**: 6-digit hex (`#ffffff`, `ffffff`) and 3-digit shorthand (`#fff`, `fff`), case-insensitive
 
-If images have differing aspect ratios or resolutions, `dynawp` scales to cover and center-crops them to match the bounding dimensions.
+If no `-r` is given, output matches your primary display's resolution (same as `-r auto`). Images that don't match the target resolution are scaled to cover and center-cropped.
 
 ## Shell completions
 
