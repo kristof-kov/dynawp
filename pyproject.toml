@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dwp"
 version = "1.0.0"
-description = "Create macOS Light/Dark dynamic wallpapers from two images"
+description = "Create macOS Light/Dark dynamic wallpapers from images or hex color codes"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
