@@ -295,8 +295,31 @@ def _validate_input(path: str) -> None:
         raise SystemExit(1)
 
 
-def main():
-    pass
+def main() -> None:
+    args = parse_args()
+
+    if args.info:
+        inspect_file(args.info)
+        return
+
+    _validate_input(args.light)
+    _validate_input(args.dark)
+
+    light_img, lw, lh = load_image(args.light)
+    dark_img, dw, dh = load_image(args.dark)
+
+    light_img, dark_img, _w, _h = reconcile_dimensions(
+        light_img, lw, lh, dark_img, dw, dh,
+    )
+
+    create_wallpaper(light_img, dark_img, args.output)
+
+    if not verify_output(args.output):
+        print("⚠️ wallpaper was written but verification found issues", file=sys.stderr)
+        raise SystemExit(1)
+
+    if args.set:
+        set_wallpaper(args.output)
 
 
 if __name__ == "__main__":
