@@ -239,10 +239,11 @@ def create_wallpaper(light_img, dark_img, output_path: str) -> None:
     if not destination:
         raise DWPError(f"Failed to create HEIC destination: {output_path}")
 
+    options = {Quartz.kCGImageDestinationLossyCompressionQuality: 0.95}
     Quartz.CGImageDestinationAddImageAndMetadata(
-        destination, light_img, metadata, None,
+        destination, light_img, metadata, options,
     )
-    Quartz.CGImageDestinationAddImage(destination, dark_img, None)
+    Quartz.CGImageDestinationAddImage(destination, dark_img, options)
 
     if not Quartz.CGImageDestinationFinalize(destination):
         raise DWPError(f"Failed to finalize HEIC file: {output_path}")
