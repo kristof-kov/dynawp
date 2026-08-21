@@ -9,6 +9,7 @@ import plistlib
 import sys
 
 import Quartz
+from AppKit import NSScreen, NSWorkspace
 from Foundation import NSURL
 
 SUPPORTED_EXTENSIONS = {
@@ -188,6 +189,28 @@ def verify_output(path: str) -> bool:
     except Exception as exc:
         print(f"   Metadata: ✗ failed to decode apr payload: {exc}", file=sys.stderr)
         return False
+
+
+def set_wallpaper(path: str) -> None:
+    workspace = NSWorkspace.sharedWorkspace()
+    file_url = NSURL.fileURLWithPath_(os.path.abspath(path))
+    screens = NSScreen.screens()
+
+    failures = 0
+    for screen in screens:
+        success, error = workspace.setDesktopImageURL_forScreen_options_error_(
+            file_url, screen, {}, None,
+        )
+        if not success:
+            print(f"⚠️ Failed to set wallpaper on a display: {error}", file=sys.stderr)
+            failures += 1
+
+    total = len(screens)
+    ok = total - failures
+    if ok > 0:
+        print(f"🖥  Wallpaper set on {ok} display(s)")
+    if failures:
+        raise SystemExit(1)
 
 
 def parse_args() -> argparse.Namespace:
