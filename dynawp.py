@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import importlib.metadata
 import os
 import plistlib
 import re
@@ -19,11 +20,11 @@ class DWPError(Exception):
     pass
 
 
-SUPPORTED_EXTENSIONS = {
-    ".jpg", ".jpeg", ".png", ".heic", ".heif", ".tiff", ".tif", ".webp",
-}
+try:
+    __version__ = importlib.metadata.version("dynawp")
+except importlib.metadata.PackageNotFoundError:
+    __version__ = "unknown"
 
-HEIC_EXTENSIONS = {".heic", ".heif"}
 
 HEX_COLOR_PATTERN = re.compile(r"^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 RESOLUTION_PATTERN = re.compile(r"^(\d+)[xX](\d+)$")
@@ -32,35 +33,29 @@ DEFAULT_COLOR_HEIGHT = 2160
 
 APPLE_NAMESPACE = "http://ns.apple.com/namespace/1.0/"
 APPLE_PREFIX = "apple_desktop"
-APR_TAG = "apr"
-APR_PATH = f"{APPLE_PREFIX}:{APR_TAG}"
+APR_PATH = f"{APPLE_PREFIX}:apr"
+
+SUPPORTED_FORMATS = "jpg, jpeg, png, heic, heif, tiff, tif, webp"
 
 
 def get_primary_screen_resolution() -> tuple[int, int]:
     """Return primary display's physical pixel resolution (w, h), or default fallback."""
     try:
-        screens = NSScreen.screens()
-        if screens:
-            main_screen = screens[0]
-            frame = main_screen.frame()
-            scale = main_screen.backingScaleFactor()
-            w = int(round(frame.size.width * scale))
-            h = int(round(frame.size.height * scale))
-            if w > 0 and h > 0:
-                return w, h
-    except Exception as exc:
-        print(
-            f"warning: could not detect screen resolution ({exc}), "
-            f"falling back to {DEFAULT_COLOR_WIDTH}x{DEFAULT_COLOR_HEIGHT}",
-            file=sys.stderr,
-        )
+        screen = NSScreen.screens()[0]
+        scale = screen.backingScaleFactor()
+        w = int(round(screen.frame().size.width * scale))
+        h = int(round(screen.frame().size.height * scale))
+        if w > 0 and h > 0:
+            return w, h
+    except Exception:
+        pass
     return DEFAULT_COLOR_WIDTH, DEFAULT_COLOR_HEIGHT
 
 
 def parse_resolution(val: str) -> tuple[int, int]:
     """
     Parse a resolution string: 'auto' or 'WIDTHxHEIGHT' (e.g., '3840x2160').
-    Raises ValueError if format is invalid or dimensions are <= 0.
+    Raises DWPError if format is invalid.
     """
     cleaned = val.strip().lower()
     if cleaned == "auto":
@@ -68,13 +63,13 @@ def parse_resolution(val: str) -> tuple[int, int]:
 
     match = RESOLUTION_PATTERN.fullmatch(cleaned)
     if not match:
-        raise ValueError(
+        raise DWPError(
             f"Invalid resolution '{val}'. Expected format: 'WIDTHxHEIGHT' (e.g. '3840x2160') or 'auto'."
         )
 
     w, h = int(match.group(1)), int(match.group(2))
     if w <= 0 or h <= 0:
-        raise ValueError(f"Resolution dimensions must be positive integers, got {w}x{h}.")
+        raise DWPError(f"Resolution dimensions must be positive integers, got {w}x{h}.")
     return w, h
 
 
@@ -92,28 +87,8 @@ def parse_hex_color(val: str) -> tuple[float, float, float] | None:
     return r, g, b
 
 
-def is_hex_color(val: str) -> bool:
-    """
-    Return True if val is a valid hex color string.
-
-    If val starts with '#', it is unambiguously treated as a hex color.
-    Otherwise, if a file named val exists on disk, it is treated as a file path.
-    Prefix with '#' to force interpretation as a hex color when a file with
-    the same name exists.
-    """
-    stripped = val.strip()
-    if stripped.startswith("#"):
-        return HEX_COLOR_PATTERN.fullmatch(stripped) is not None
-    if os.path.isfile(val):
-        return False
-    return HEX_COLOR_PATTERN.fullmatch(stripped) is not None
-
-
 def create_color_image(r: float, g: float, b: float, width: int, height: int) -> "Quartz.CGImageRef":
     """Create a solid color CGImageRef with given sRGB color and dimensions. Raises DWPError on failure."""
-    if width <= 0 or height <= 0:
-        raise DWPError(f"Color image dimensions must be positive integers, got {width}x{height}")
-
     color_space = Quartz.CGColorSpaceCreateWithName(Quartz.kCGColorSpaceSRGB)
     ctx = Quartz.CGBitmapContextCreate(
         None, width, height, 8, 0, color_space,
@@ -139,23 +114,17 @@ def load_image(path: str) -> tuple["Quartz.CGImageRef", int, int]:
 
     image = Quartz.CGImageSourceCreateImageAtIndex(source, 0, None)
     if not image:
-        raise DWPError(f"Cannot decode image: {path}")
+        raise DWPError(
+            f"Cannot decode image: {path}\nSupported formats: {SUPPORTED_FORMATS}"
+        )
 
-    w = Quartz.CGImageGetWidth(image)
-    h = Quartz.CGImageGetHeight(image)
-    if w <= 0 or h <= 0:
-        raise DWPError(f"Invalid image dimensions ({w}x{h}) for: {path}")
-    return image, w, h
+    return image, Quartz.CGImageGetWidth(image), Quartz.CGImageGetHeight(image)
 
 
 def resize_image(image: "Quartz.CGImageRef", target_w: int, target_h: int) -> "Quartz.CGImageRef":
     """Scale to cover, then center-crop to exact target size. Raises DWPError on failure."""
     src_w = Quartz.CGImageGetWidth(image)
     src_h = Quartz.CGImageGetHeight(image)
-    if src_w <= 0 or src_h <= 0:
-        raise DWPError(f"Cannot resize degenerate image with dimensions {src_w}x{src_h}")
-    if target_w <= 0 or target_h <= 0:
-        raise DWPError(f"Target dimensions must be positive integers, got {target_w}x{target_h}")
 
     scale = max(target_w / src_w, target_h / src_h)
     scaled_w = int(src_w * scale)
@@ -183,32 +152,26 @@ def resize_image(image: "Quartz.CGImageRef", target_w: int, target_h: int) -> "Q
     return img
 
 
-def _load_or_create(arg: str, target: tuple[int, int]) -> tuple["Quartz.CGImageRef", int, int]:
-    """Return (CGImageRef, width, height) from an image path or hex color, sized to target."""
-    color = parse_hex_color(arg) if is_hex_color(arg) else None
+def _load_or_create(arg: str, target: tuple[int, int]) -> "Quartz.CGImageRef":
+    """
+    Return a CGImageRef sized to target from an image path or hex color.
+    A bare hex string that names an existing file is treated as a file path;
+    prefix with '#' to force color interpretation.
+    """
+    arg = arg.strip()
+    color = parse_hex_color(arg) if (arg.startswith("#") or not os.path.isfile(arg)) else None
     if color is not None:
-        r, g, b = color
-        img = create_color_image(r, g, b, target[0], target[1])
-        return img, target[0], target[1]
-    _validate_image_file(arg)
-    return load_image(arg)
+        return create_color_image(*color, *target)
+
+    image, w, h = load_image(arg)
+    if (w, h) != target:
+        image = resize_image(image, *target)
+    return image
 
 
-def resolve_inputs(light_arg: str, dark_arg: str, target_res: tuple[int, int]) -> tuple["Quartz.CGImageRef", "Quartz.CGImageRef", int, int]:
-    """
-    Validate and load/create light and dark CGImages at the target resolution.
-    Images are scaled to cover and center-cropped if their size differs.
-    Returns (light_img, dark_img, width, height).
-    """
-    light_img, lw, lh = _load_or_create(light_arg, target_res)
-    dark_img, dw, dh = _load_or_create(dark_arg, target_res)
-
-    if (lw, lh) != target_res:
-        light_img = resize_image(light_img, target_res[0], target_res[1])
-    if (dw, dh) != target_res:
-        dark_img = resize_image(dark_img, target_res[0], target_res[1])
-
-    return light_img, dark_img, target_res[0], target_res[1]
+def resolve_inputs(light_arg: str, dark_arg: str, target_res: tuple[int, int]) -> tuple["Quartz.CGImageRef", "Quartz.CGImageRef"]:
+    """Return light and dark CGImages scaled to the target resolution."""
+    return _load_or_create(light_arg, target_res), _load_or_create(dark_arg, target_res)
 
 
 def _build_apr_payload() -> str:
@@ -228,7 +191,7 @@ def _build_metadata(base64_apr: str) -> "Quartz.CGImageMetadataRef":
     tag = Quartz.CGImageMetadataTagCreate(
         APPLE_NAMESPACE,
         APPLE_PREFIX,
-        APR_TAG,
+        "apr",
         Quartz.kCGImageMetadataTypeString,
         base64_apr,
     )
@@ -251,7 +214,7 @@ def resolve_output_path(path: str) -> str:
     ext = os.path.splitext(path)[1].lower()
     if not ext:
         return path + ".heic"
-    if ext in HEIC_EXTENSIONS:
+    if ext == ".heic":
         return path
     raise DWPError(
         f"Unsupported output extension '{ext}': dynamic wallpapers are always HEIC.\n"
@@ -282,7 +245,10 @@ def create_wallpaper(light_img, dark_img, output_path: str) -> None:
 
 
 def verify_output(path: str) -> bool:
-    """Re-open the HEIC and validate image count, dimensions, and metadata."""
+    """
+    Re-open the HEIC, print a summary, and validate image count and apr metadata.
+    Returns True when the file is a valid dynamic wallpaper. Warnings go to stderr.
+    """
     url = NSURL.fileURLWithPath_(os.path.abspath(path))
     source = Quartz.CGImageSourceCreateWithURL(url, None)
     if not source:
@@ -290,42 +256,34 @@ def verify_output(path: str) -> bool:
         return False
 
     count = Quartz.CGImageSourceGetCount(source)
-    if count != 2:
-        print(f"warning: verification failed: expected 2 images, got {count}", file=sys.stderr)
-        return False
-
     print(f"Dynamic wallpaper created: {path}")
-    print(f"   Images: {count}")
-
     for i in range(count):
         props = Quartz.CGImageSourceCopyPropertiesAtIndex(source, i, None)
         w = props.get("PixelWidth", "?") if props else "?"
         h = props.get("PixelHeight", "?") if props else "?"
-        label = "Light" if i == 0 else "Dark "
+        label = "Light" if i == 0 else "Dark"
         print(f"   {label} (index {i}): {w}x{h}")
 
+    if count != 2:
+        print(f"warning: verification failed: expected 2 images, got {count}", file=sys.stderr)
+        return False
+
     metadata = Quartz.CGImageSourceCopyMetadataAtIndex(source, 0, None)
-    if not metadata:
-        print("warning: no metadata on first image", file=sys.stderr)
-        return False
-
-    tag = Quartz.CGImageMetadataCopyTagWithPath(metadata, None, APR_PATH)
-    if not tag:
-        print("warning: apple_desktop:apr not found", file=sys.stderr)
-        return False
-
-    value = Quartz.CGImageMetadataTagCopyValue(tag)
+    tag = (
+        Quartz.CGImageMetadataCopyTagWithPath(metadata, None, APR_PATH)
+        if metadata else None
+    )
+    value = Quartz.CGImageMetadataTagCopyValue(tag) if tag else None
     try:
         plist = plistlib.loads(base64.b64decode(value))
-        if plist == {"l": 0, "d": 1}:
-            print("   Metadata: ok (apple_desktop:apr)")
-            return True
-        else:
-            print(f"warning: unexpected apr payload: {plist}", file=sys.stderr)
-            return False
-    except Exception as exc:
-        print(f"warning: failed to decode apr payload: {exc}", file=sys.stderr)
+    except Exception:
+        plist = None
+    if plist != {"l": 0, "d": 1}:
+        print("warning: verification failed: apple_desktop:apr missing or invalid", file=sys.stderr)
         return False
+
+    print("   Metadata: ok (apple_desktop:apr)")
+    return True
 
 
 def set_wallpaper(path: str) -> None:
@@ -402,11 +360,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Create macOS Light/Dark dynamic wallpapers from images or hex color codes",
     )
 
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--info", metavar="FILE",
                         help="Inspect an existing dynamic wallpaper")
     parser.add_argument("light", nargs="?", help="Light-mode image path or hex color (e.g. '#ffffff')")
     parser.add_argument("dark", nargs="?", help="Dark-mode image path or hex color (e.g. '#000000')")
-    parser.add_argument("-o", "--output", default="output.heic",
+    parser.add_argument("-o", "--output",
                         help="Output path (default: output.heic)")
     parser.add_argument("-r", "--resolution", metavar="WxH",
                         help="Target resolution: WIDTHxHEIGHT (e.g. 3840x2160) or 'auto'")
@@ -422,40 +381,33 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             parser.error("--info cannot be used with --set")
         if args.resolution is not None:
             parser.error("--info cannot be used with -r/--resolution")
+        if args.output is not None:
+            parser.error("--info cannot be used with -o/--output")
     else:
         if args.light is None or args.dark is None:
             parser.error("two arguments required: image paths or hex color codes (or use --info <file>)")
 
-    if args.resolution is not None:
-        try:
-            parse_resolution(args.resolution)
-        except ValueError as e:
-            parser.error(str(e))
+    if args.output is None:
+        args.output = "output.heic"
 
     return args
-
-
-def _validate_image_file(path: str) -> None:
-    if not os.path.isfile(path):
-        raise DWPError(f"File not found: {path}")
-    ext = os.path.splitext(path)[1].lower()
-    if ext not in SUPPORTED_EXTENSIONS:
-        raise DWPError(
-            f"Unsupported format '{ext}' for: {path}\n"
-            f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
-        )
 
 
 def main(argv: list[str] | None = None) -> None:
     try:
         args = parse_args(argv)
 
-        if args.info:
-            inspect_file(args.info)
+        if args.info is not None:
+            inspect_file(args.info.strip())
             return
 
-        target_res = parse_resolution(args.resolution) if args.resolution else get_primary_screen_resolution()
-        light_img, dark_img, _w, _h = resolve_inputs(args.light, args.dark, target_res)
+        target_res = (
+            parse_resolution(args.resolution)
+            if args.resolution
+            else get_primary_screen_resolution()
+        )
+
+        light_img, dark_img = resolve_inputs(args.light, args.dark, target_res)
 
         output_path = resolve_output_path(args.output)
         create_wallpaper(light_img, dark_img, output_path)
