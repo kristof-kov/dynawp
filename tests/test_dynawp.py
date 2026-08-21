@@ -1,5 +1,6 @@
 """Tests for dynawp."""
 
+import io
 import os
 import plistlib
 import base64
@@ -271,6 +272,110 @@ class TestMainErrorHandling(unittest.TestCase):
                 with self.assertRaises(SystemExit) as ctx:
                     dynawp.main(["#fff", "#000"])
                 self.assertEqual(ctx.exception.code, 1)
+
+    def test_main_handles_keyboard_interrupt(self):
+        with patch("dynawp.resolve_inputs", side_effect=KeyboardInterrupt):
+            with patch("sys.stderr"):
+                with self.assertRaises(SystemExit) as ctx:
+                    dynawp.main(["#fff", "#000"])
+                self.assertEqual(ctx.exception.code, 130)
+
+
+class TestVerifyOutput(unittest.TestCase):
+    def test_verify_output_rejects_non_image_file(self):
+        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp:
+            tmp.write(b"not an image")
+            tmp_path = tmp.name
+
+        try:
+            with patch("sys.stderr"), patch("sys.stdout"):
+                self.assertFalse(dynawp.verify_output(tmp_path))
+        finally:
+            os.remove(tmp_path)
+
+    def test_verify_output_rejects_single_image_heic(self):
+        with tempfile.NamedTemporaryFile(suffix=".heic", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            img = dynawp.create_color_image(1.0, 0.0, 0.0, 32, 32)
+            dest = Quartz.CGImageDestinationCreateWithURL(
+                NSURL.fileURLWithPath_(tmp_path), "public.heic", 1, None,
+            )
+            Quartz.CGImageDestinationAddImage(dest, img, None)
+            self.assertTrue(Quartz.CGImageDestinationFinalize(dest))
+
+            with patch("sys.stderr"), patch("sys.stdout"):
+                self.assertFalse(dynawp.verify_output(tmp_path))
+        finally:
+            os.remove(tmp_path)
+
+
+class TestInspectFile(unittest.TestCase):
+    def test_inspect_dynamic_wallpaper_reports_apr(self):
+        with tempfile.NamedTemporaryFile(suffix=".heic", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            light_img = dynawp.create_color_image(1.0, 1.0, 1.0, 32, 32)
+            dark_img = dynawp.create_color_image(0.0, 0.0, 0.0, 32, 32)
+            dynawp.create_wallpaper(light_img, dark_img, tmp_path)
+
+            with patch("sys.stdout", new_callable=io.StringIO) as mock_out:
+                dynawp.inspect_file(tmp_path)
+            output = mock_out.getvalue()
+            self.assertIn("appearance-based (apr)", output)
+            self.assertIn("Light -> index 0, Dark -> index 1", output)
+        finally:
+            os.remove(tmp_path)
+
+    def test_inspect_plain_heic_has_no_dynamic_metadata(self):
+        with tempfile.NamedTemporaryFile(suffix=".heic", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            img = dynawp.create_color_image(0.5, 0.5, 0.5, 32, 32)
+            dest = Quartz.CGImageDestinationCreateWithURL(
+                NSURL.fileURLWithPath_(tmp_path), "public.heic", 1, None,
+            )
+            Quartz.CGImageDestinationAddImage(dest, img, None)
+            self.assertTrue(Quartz.CGImageDestinationFinalize(dest))
+
+            with patch("sys.stdout", new_callable=io.StringIO) as mock_out:
+                dynawp.inspect_file(tmp_path)
+            self.assertIn("no Apple dynamic desktop metadata found", mock_out.getvalue())
+        finally:
+            os.remove(tmp_path)
+
+    def test_inspect_missing_file_raises(self):
+        with self.assertRaises(DWPError):
+            dynawp.inspect_file("nonexistent_wallpaper.heic")
+
+
+class TestSetWallpaper(unittest.TestCase):
+    def _make_workspace(self, results):
+        workspace = MagicMock()
+        workspace.setDesktopImageURL_forScreen_options_error_.side_effect = results
+        return workspace
+
+    def test_set_wallpaper_success_on_all_displays(self):
+        workspace = self._make_workspace([(True, None), (True, None)])
+        screens = [MagicMock(), MagicMock()]
+        with patch("dynawp.NSWorkspace") as mock_ns, patch("dynawp.NSScreen") as mock_nsscreen:
+            mock_ns.sharedWorkspace.return_value = workspace
+            mock_nsscreen.screens.return_value = screens
+            dynawp.set_wallpaper("/tmp/fake.heic")
+        self.assertEqual(workspace.setDesktopImageURL_forScreen_options_error_.call_count, 2)
+
+    def test_set_wallpaper_partial_failure_raises(self):
+        workspace = self._make_workspace([(True, None), (False, "mock error")])
+        screens = [MagicMock(), MagicMock()]
+        with patch("dynawp.NSWorkspace") as mock_ns, patch("dynawp.NSScreen") as mock_nsscreen:
+            mock_ns.sharedWorkspace.return_value = workspace
+            mock_nsscreen.screens.return_value = screens
+            with patch("sys.stderr"), patch("sys.stdout"):
+                with self.assertRaises(DWPError):
+                    dynawp.set_wallpaper("/tmp/fake.heic")
 
 
 if __name__ == "__main__":
