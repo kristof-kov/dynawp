@@ -23,6 +23,8 @@ SUPPORTED_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".heic", ".heif", ".tiff", ".tif", ".webp",
 }
 
+HEIC_EXTENSIONS = {".heic", ".heif"}
+
 HEX_COLOR_PATTERN = re.compile(r"^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 RESOLUTION_PATTERN = re.compile(r"^(\d+)[xX](\d+)$")
 DEFAULT_COLOR_WIDTH = 3840
@@ -236,6 +238,23 @@ def _build_metadata(base64_apr: str):
     return metadata
 
 
+def resolve_output_path(path: str) -> str:
+    """
+    Normalize the output path: dynamic wallpapers are always HEIC, so append
+    '.heic' when no extension is given and reject any other extension.
+    Raises DWPError on unsupported extensions.
+    """
+    ext = os.path.splitext(path)[1].lower()
+    if not ext:
+        return path + ".heic"
+    if ext in HEIC_EXTENSIONS:
+        return path
+    raise DWPError(
+        f"Unsupported output extension '{ext}': dynamic wallpapers are always HEIC.\n"
+        f"Use a .heic extension or omit it (e.g. -o wallpaper)."
+    )
+
+
 def create_wallpaper(light_img, dark_img, output_path: str) -> None:
     """Create a 2-image HEIC with apple_desktop:apr metadata. Raises DWPError on failure."""
     base64_apr = _build_apr_payload()
@@ -263,15 +282,15 @@ def verify_output(path: str) -> bool:
     url = NSURL.fileURLWithPath_(os.path.abspath(path))
     source = Quartz.CGImageSourceCreateWithURL(url, None)
     if not source:
-        print("⚠️ verification failed: cannot re-open file", file=sys.stderr)
+        print("warning: verification failed: cannot re-open file", file=sys.stderr)
         return False
 
     count = Quartz.CGImageSourceGetCount(source)
     if count != 2:
-        print(f"⚠️ verification failed: expected 2 images, got {count}", file=sys.stderr)
+        print(f"warning: verification failed: expected 2 images, got {count}", file=sys.stderr)
         return False
 
-    print(f"✅ Dynamic wallpaper created: {path}")
+    print(f"Dynamic wallpaper created: {path}")
     print(f"   Images: {count}")
 
     for i in range(count):
@@ -279,29 +298,29 @@ def verify_output(path: str) -> bool:
         w = props.get("PixelWidth", "?") if props else "?"
         h = props.get("PixelHeight", "?") if props else "?"
         label = "Light" if i == 0 else "Dark "
-        print(f"   {label} (index {i}): {w}×{h}")
+        print(f"   {label} (index {i}): {w}x{h}")
 
     metadata = Quartz.CGImageSourceCopyMetadataAtIndex(source, 0, None)
     if not metadata:
-        print("   Metadata: ✗ no metadata on first image", file=sys.stderr)
+        print("warning: no metadata on first image", file=sys.stderr)
         return False
 
     tag = Quartz.CGImageMetadataCopyTagWithPath(metadata, None, APR_PATH)
     if not tag:
-        print("   Metadata: ✗ apple_desktop:apr NOT FOUND", file=sys.stderr)
+        print("warning: apple_desktop:apr not found", file=sys.stderr)
         return False
 
     value = Quartz.CGImageMetadataTagCopyValue(tag)
     try:
         plist = plistlib.loads(base64.b64decode(value))
         if plist == {"l": 0, "d": 1}:
-            print("   Metadata: ✓ valid (apple_desktop:apr)")
+            print("   Metadata: ok (apple_desktop:apr)")
             return True
         else:
-            print(f"   Metadata: ✗ unexpected plist content: {plist}", file=sys.stderr)
+            print(f"warning: unexpected apr payload: {plist}", file=sys.stderr)
             return False
     except Exception as exc:
-        print(f"   Metadata: ✗ failed to decode apr payload: {exc}", file=sys.stderr)
+        print(f"warning: failed to decode apr payload: {exc}", file=sys.stderr)
         return False
 
 
@@ -317,13 +336,13 @@ def set_wallpaper(path: str) -> None:
             file_url, screen, {}, None,
         )
         if not success:
-            print(f"⚠️ Failed to set wallpaper on a display: {error}", file=sys.stderr)
+            print(f"warning: failed to set wallpaper on a display: {error}", file=sys.stderr)
             failures += 1
 
     total = len(screens)
     ok = total - failures
     if ok > 0:
-        print(f"🖥  Wallpaper set on {ok} display(s)")
+        print(f"Wallpaper set on {ok} display(s)")
     if failures:
         raise DWPError(f"Failed to set wallpaper on {failures} display(s)")
 
@@ -343,11 +362,11 @@ def inspect_file(path: str) -> None:
         props = Quartz.CGImageSourceCopyPropertiesAtIndex(source, i, None)
         w = props.get("PixelWidth", "?") if props else "?"
         h = props.get("PixelHeight", "?") if props else "?"
-        print(f"  [{i}] {w}×{h}")
+        print(f"  [{i}] {w}x{h}")
 
     metadata = Quartz.CGImageSourceCopyMetadataAtIndex(source, 0, None)
     if not metadata:
-        print("Dynamic wallpaper: ✗ no metadata found")
+        print("Dynamic wallpaper: no metadata found")
         return
 
     tag = Quartz.CGImageMetadataCopyTagWithPath(metadata, None, APR_PATH)
@@ -355,10 +374,10 @@ def inspect_file(path: str) -> None:
         value = Quartz.CGImageMetadataTagCopyValue(tag)
         try:
             plist = plistlib.loads(base64.b64decode(value))
-            print("Dynamic wallpaper: ✓ appearance-based (apr)")
-            print(f"  Light → index {plist.get('l')}, Dark → index {plist.get('d')}")
+            print("Dynamic wallpaper: appearance-based (apr)")
+            print(f"  Light -> index {plist.get('l')}, Dark -> index {plist.get('d')}")
         except Exception:
-            print("Dynamic wallpaper: ✗ apr metadata present but malformed")
+            print("Dynamic wallpaper: apr metadata present but malformed")
         return
 
     for key, label in [
@@ -367,10 +386,10 @@ def inspect_file(path: str) -> None:
     ]:
         t = Quartz.CGImageMetadataCopyTagWithPath(metadata, None, key)
         if t:
-            print(f"Dynamic wallpaper: ✓ {label} ({key.split(':')[1]})")
+            print(f"Dynamic wallpaper: {label} ({key.split(':')[1]})")
             return
 
-    print("Dynamic wallpaper: ✗ no Apple dynamic desktop metadata found")
+    print("Dynamic wallpaper: no Apple dynamic desktop metadata found")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -434,13 +453,14 @@ def main(argv: list[str] | None = None) -> None:
         target_res = parse_resolution(args.resolution) if args.resolution else get_primary_screen_resolution()
         light_img, dark_img, _w, _h = resolve_inputs(args.light, args.dark, target_res)
 
-        create_wallpaper(light_img, dark_img, args.output)
+        output_path = resolve_output_path(args.output)
+        create_wallpaper(light_img, dark_img, output_path)
 
-        if not verify_output(args.output):
+        if not verify_output(output_path):
             raise DWPError("Wallpaper was written but verification found issues")
 
         if args.set:
-            set_wallpaper(args.output)
+            set_wallpaper(output_path)
     except DWPError as err:
         print(f"Error: {err}", file=sys.stderr)
         sys.exit(1)

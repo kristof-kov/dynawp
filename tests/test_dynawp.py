@@ -201,6 +201,23 @@ class TestWallpaperEndToEnd(unittest.TestCase):
                 self.assertEqual(Quartz.CGImageGetHeight(img), 80)
 
 
+class TestOutputPath(unittest.TestCase):
+    def test_resolve_output_path_appends_heic(self):
+        self.assertEqual(dynawp.resolve_output_path("wallpaper"), "wallpaper.heic")
+        self.assertEqual(dynawp.resolve_output_path("/tmp/pics/wp"), "/tmp/pics/wp.heic")
+
+    def test_resolve_output_path_keeps_heic(self):
+        self.assertEqual(dynawp.resolve_output_path("wallpaper.heic"), "wallpaper.heic")
+        self.assertEqual(dynawp.resolve_output_path("wallpaper.heif"), "wallpaper.heif")
+        self.assertEqual(dynawp.resolve_output_path("WALLPAPER.HEIC"), "WALLPAPER.HEIC")
+
+    def test_resolve_output_path_rejects_other_extensions(self):
+        for name in ("out.png", "out.jpg", "out.txt", "out.tiff"):
+            with self.subTest(name=name):
+                with self.assertRaises(DWPError):
+                    dynawp.resolve_output_path(name)
+
+
 class TestCLIArgs(unittest.TestCase):
     def test_parse_args_basic(self):
         args = dynawp.parse_args(["light.jpg", "dark.jpg"])

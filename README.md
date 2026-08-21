@@ -55,7 +55,7 @@ dynawp --info wallpaper.heic
 | :--- | :--- |
 | `light` | Light-mode image path or hex color (e.g. `#ffffff`, `#fff`, `ffffff`) |
 | `dark` | Dark-mode image path or hex color (e.g. `#000000`, `#000`, `000000`) |
-| `-o`, `--output` | Output file path (default: `output.heic`) |
+| `-o`, `--output` | Output file path (default: `output.heic`); `.heic` is appended when no extension is given |
 | `-r`, `--resolution` | Target resolution (`WIDTHxHEIGHT` or `auto`) |
 | `--set` | Apply the wallpaper to all connected displays after generation |
 | `--info <file>` | Inspect metadata and frame dimensions of a HEIC wallpaper |
