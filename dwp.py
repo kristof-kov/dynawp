@@ -32,6 +32,54 @@ def load_image(path: str) -> tuple:
     return image, w, h
 
 
+def resize_image(image, target_w: int, target_h: int):
+    """Scale to cover, then center-crop to exact target size."""
+    src_w = Quartz.CGImageGetWidth(image)
+    src_h = Quartz.CGImageGetHeight(image)
+
+    scale = max(target_w / src_w, target_h / src_h)
+    scaled_w = int(src_w * scale)
+    scaled_h = int(src_h * scale)
+    offset_x = (scaled_w - target_w) // 2
+    offset_y = (scaled_h - target_h) // 2
+
+    color_space = Quartz.CGColorSpaceCreateWithName(Quartz.kCGColorSpaceSRGB)
+    ctx = Quartz.CGBitmapContextCreate(
+        None, target_w, target_h, 8, 0, color_space,
+        Quartz.kCGImageAlphaPremultipliedLast,
+    )
+    if not ctx:
+        print("Error: failed to create bitmap context", file=sys.stderr)
+        raise SystemExit(1)
+
+    Quartz.CGContextSetInterpolationQuality(ctx, Quartz.kCGInterpolationHigh)
+    Quartz.CGContextDrawImage(
+        ctx,
+        Quartz.CGRectMake(-offset_x, -offset_y, scaled_w, scaled_h),
+        image,
+    )
+    return Quartz.CGBitmapContextCreateImage(ctx)
+
+
+def reconcile_dimensions(light_img, lw, lh, dark_img, dw, dh):
+    """Resize the smaller image to match the larger. Returns (light, dark, w, h)."""
+    if lw == dw and lh == dh:
+        return light_img, dark_img, lw, lh
+
+    print(f"⚠️ Dimension mismatch: light={lw}×{lh}, dark={dw}×{dh}", file=sys.stderr)
+
+    if lw * lh >= dw * dh:
+        target_w, target_h = lw, lh
+        dark_img = resize_image(dark_img, target_w, target_h)
+        print(f"   Resized dark image → {target_w}×{target_h}", file=sys.stderr)
+    else:
+        target_w, target_h = dw, dh
+        light_img = resize_image(light_img, target_w, target_h)
+        print(f"   Resized light image → {target_w}×{target_h}", file=sys.stderr)
+
+    return light_img, dark_img, target_w, target_h
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="dwp",
