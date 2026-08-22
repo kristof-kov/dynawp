@@ -22,7 +22,7 @@ _dynawp() {
     esac
 
     if [[ "$cur" == -* ]]; then
-        COMPREPLY=($(compgen -W "-h --help -i --info -o --output -r --resolution -s --set -v --version" -- "$cur"))
+        COMPREPLY=($(compgen -W "-h --help -i --info -o --output -r --resolution -s --set -f --force -v --version" -- "$cur"))
         return 0
     fi
 

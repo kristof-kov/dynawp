@@ -12,10 +12,12 @@ _dynawp() {
 
     _arguments -s -S \
         '(-h --help)'{-h,--help}'[show help message]' \
-        '(-i --info -o --output -r --resolution -s --set)'{-i,--info='}'[inspect an existing dynamic wallpaper]:dynamic wallpaper:_files -g "*.heic *.heif *.HEIC *.HEIF" \
+        '(-v --version)'{-v,--version}'[show version]' \
+        '(-i --info -o --output -r --resolution -s --set -f --force)'{-i,--info}'[inspect an existing dynamic wallpaper]:dynamic wallpaper:_files -g "*.heic *.heif *.HEIC *.HEIF"' \
         '(-o --output)'{-o,--output}'[output path (default: output.heic)]:output file:_files -g "*.heic *.HEIC"' \
         '(-r --resolution)'{-r,--resolution}'[target resolution (WIDTHxHEIGHT or auto)]:resolution:(auto 3840x2160 5120x2880 2560x1440 1920x1080 2880x1800 3024x1964 3456x2234)' \
         '(-s --set)'{-s,--set}'[set as wallpaper on all displays]' \
+        '(-f --force)'{-f,--force}'[overwrite output file if it already exists]' \
         '1:light image or hex color:_files -g "${(j: :)image_files}"' \
         '2:dark image or hex color:_files -g "${(j: :)image_files}"'
 }
