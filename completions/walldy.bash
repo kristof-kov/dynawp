@@ -1,4 +1,4 @@
-_dynawp() {
+_walldy() {
     local cur prev words cword
     _init_completion || return
 
@@ -29,5 +29,5 @@ _dynawp() {
     COMPREPLY=($(compgen -f -X "!*.$image_exts" -- "$cur"))
 }
 
-complete -F _dynawp dynawp
-complete -F _dynawp dwp
+complete -F _walldy walldy
+

@@ -1,4 +1,4 @@
-"""dynawp - create macOS light/dark dynamic wallpapers."""
+"""walldy - create macOS light/dark dynamic wallpapers."""
 
 from __future__ import annotations
 
@@ -15,13 +15,13 @@ from AppKit import NSScreen, NSWorkspace
 from Foundation import NSURL
 
 
-class DWPError(Exception):
-    """Base exception for dynawp errors."""
+class WalldyError(Exception):
+    """Base exception for walldy errors."""
     pass
 
 
 try:
-    __version__ = importlib.metadata.version("dynawp")
+    __version__ = importlib.metadata.version("walldy")
 except importlib.metadata.PackageNotFoundError:
     __version__ = "unknown"
 
@@ -55,7 +55,7 @@ def get_primary_screen_resolution() -> tuple[int, int]:
 def parse_resolution(val: str) -> tuple[int, int]:
     """
     Parse a resolution string: 'auto' or 'WIDTHxHEIGHT' (e.g., '3840x2160').
-    Raises DWPError if format is invalid.
+    Raises WalldyError if format is invalid.
     """
     cleaned = val.strip().lower()
     if cleaned == "auto":
@@ -63,13 +63,13 @@ def parse_resolution(val: str) -> tuple[int, int]:
 
     match = RESOLUTION_PATTERN.fullmatch(cleaned)
     if not match:
-        raise DWPError(
+        raise WalldyError(
             f"Invalid resolution '{val}'. Expected format: 'WIDTHxHEIGHT' (e.g. '3840x2160') or 'auto'."
         )
 
     w, h = int(match.group(1)), int(match.group(2))
     if w <= 0 or h <= 0:
-        raise DWPError(f"Resolution dimensions must be positive integers, got {w}x{h}.")
+        raise WalldyError(f"Resolution dimensions must be positive integers, got {w}x{h}.")
     return w, h
 
 
@@ -88,33 +88,33 @@ def parse_hex_color(val: str) -> tuple[float, float, float] | None:
 
 
 def create_color_image(r: float, g: float, b: float, width: int, height: int) -> "Quartz.CGImageRef":
-    """Create a solid color CGImageRef with given sRGB color and dimensions. Raises DWPError on failure."""
+    """Create a solid color CGImageRef with given sRGB color and dimensions. Raises WalldyError on failure."""
     color_space = Quartz.CGColorSpaceCreateWithName(Quartz.kCGColorSpaceSRGB)
     ctx = Quartz.CGBitmapContextCreate(
         None, width, height, 8, 0, color_space,
         Quartz.kCGImageAlphaPremultipliedLast,
     )
     if not ctx:
-        raise DWPError("Failed to create bitmap context for solid color")
+        raise WalldyError("Failed to create bitmap context for solid color")
 
     Quartz.CGContextSetRGBFillColor(ctx, r, g, b, 1.0)
     Quartz.CGContextFillRect(ctx, Quartz.CGRectMake(0, 0, width, height))
     img = Quartz.CGBitmapContextCreateImage(ctx)
     if not img:
-        raise DWPError("Failed to create image from bitmap context for solid color")
+        raise WalldyError("Failed to create image from bitmap context for solid color")
     return img
 
 
 def load_image(path: str) -> tuple["Quartz.CGImageRef", int, int]:
-    """Return (CGImageRef, width, height). Raises DWPError on failure."""
+    """Return (CGImageRef, width, height). Raises WalldyError on failure."""
     url = NSURL.fileURLWithPath_(os.path.abspath(path))
     source = Quartz.CGImageSourceCreateWithURL(url, None)
     if not source:
-        raise DWPError(f"Cannot read image: {path}")
+        raise WalldyError(f"Cannot read image: {path}")
 
     image = Quartz.CGImageSourceCreateImageAtIndex(source, 0, None)
     if not image:
-        raise DWPError(
+        raise WalldyError(
             f"Cannot decode image: {path}\nSupported formats: {SUPPORTED_FORMATS}"
         )
 
@@ -122,7 +122,7 @@ def load_image(path: str) -> tuple["Quartz.CGImageRef", int, int]:
 
 
 def resize_image(image: "Quartz.CGImageRef", target_w: int, target_h: int) -> "Quartz.CGImageRef":
-    """Scale to cover, then center-crop to exact target size. Raises DWPError on failure."""
+    """Scale to cover, then center-crop to exact target size. Raises WalldyError on failure."""
     src_w = Quartz.CGImageGetWidth(image)
     src_h = Quartz.CGImageGetHeight(image)
 
@@ -138,7 +138,7 @@ def resize_image(image: "Quartz.CGImageRef", target_w: int, target_h: int) -> "Q
         Quartz.kCGImageAlphaPremultipliedLast,
     )
     if not ctx:
-        raise DWPError("Failed to create bitmap context for resizing")
+        raise WalldyError("Failed to create bitmap context for resizing")
 
     Quartz.CGContextSetInterpolationQuality(ctx, Quartz.kCGInterpolationHigh)
     Quartz.CGContextDrawImage(
@@ -148,7 +148,7 @@ def resize_image(image: "Quartz.CGImageRef", target_w: int, target_h: int) -> "Q
     )
     img = Quartz.CGBitmapContextCreateImage(ctx)
     if not img:
-        raise DWPError("Failed to create resized image from bitmap context")
+        raise WalldyError("Failed to create resized image from bitmap context")
     return img
 
 
@@ -182,7 +182,7 @@ def _build_apr_payload() -> str:
 
 
 def _build_metadata(base64_apr: str) -> "Quartz.CGImageMetadataRef":
-    """Return a CGImageMetadataRef with the apple_desktop:apr tag. Raises DWPError on failure."""
+    """Return a CGImageMetadataRef with the apple_desktop:apr tag. Raises WalldyError on failure."""
     metadata = Quartz.CGImageMetadataCreateMutable()
     Quartz.CGImageMetadataRegisterNamespaceForPrefix(
         metadata, APPLE_NAMESPACE, APPLE_PREFIX, None,
@@ -196,11 +196,11 @@ def _build_metadata(base64_apr: str) -> "Quartz.CGImageMetadataRef":
         base64_apr,
     )
     if not tag:
-        raise DWPError("Failed to create metadata tag")
+        raise WalldyError("Failed to create metadata tag")
 
     ok = Quartz.CGImageMetadataSetTagWithPath(metadata, None, APR_PATH, tag)
     if not ok:
-        raise DWPError("Failed to set metadata tag path")
+        raise WalldyError("Failed to set metadata tag path")
 
     return metadata
 
@@ -210,7 +210,7 @@ def resolve_output_path(path: str) -> str:
     Normalize the output path: dynamic wallpapers are always HEIC, so append
     '.heic' when no extension is given and reject any other extension.
     Expands ~ to the user's home directory.
-    Raises DWPError on unsupported extensions.
+    Raises WalldyError on unsupported extensions.
     """
     path = os.path.expanduser(path)
     ext = os.path.splitext(path)[1].lower()
@@ -218,14 +218,14 @@ def resolve_output_path(path: str) -> str:
         return path + ".heic"
     if ext == ".heic":
         return path
-    raise DWPError(
+    raise WalldyError(
         f"Unsupported output extension '{ext}': dynamic wallpapers are always HEIC.\n"
         f"Use a .heic extension or omit it (e.g. -o wallpaper)."
     )
 
 
 def create_wallpaper(light_img, dark_img, output_path: str) -> None:
-    """Create a 2-image HEIC with apple_desktop:apr metadata. Raises DWPError on failure."""
+    """Create a 2-image HEIC with apple_desktop:apr metadata. Raises WalldyError on failure."""
     base64_apr = _build_apr_payload()
     metadata = _build_metadata(base64_apr)
 
@@ -234,7 +234,7 @@ def create_wallpaper(light_img, dark_img, output_path: str) -> None:
         out_url, "public.heic", 2, None,
     )
     if not destination:
-        raise DWPError(f"Failed to create HEIC destination: {output_path}")
+        raise WalldyError(f"Failed to create HEIC destination: {output_path}")
 
     options = {Quartz.kCGImageDestinationLossyCompressionQuality: 0.95}
     Quartz.CGImageDestinationAddImageAndMetadata(
@@ -243,7 +243,7 @@ def create_wallpaper(light_img, dark_img, output_path: str) -> None:
     Quartz.CGImageDestinationAddImage(destination, dark_img, options)
 
     if not Quartz.CGImageDestinationFinalize(destination):
-        raise DWPError(f"Failed to finalize HEIC file: {output_path}")
+        raise WalldyError(f"Failed to finalize HEIC file: {output_path}")
 
 
 def verify_output(path: str) -> bool:
@@ -289,7 +289,7 @@ def verify_output(path: str) -> bool:
 
 
 def set_wallpaper(path: str) -> None:
-    """Set the wallpaper at path on all connected displays. Raises DWPError on failure."""
+    """Set the wallpaper at path on all connected displays. Raises WalldyError on failure."""
     workspace = NSWorkspace.sharedWorkspace()
     file_url = NSURL.fileURLWithPath_(os.path.abspath(path))
     screens = NSScreen.screens()
@@ -305,17 +305,17 @@ def set_wallpaper(path: str) -> None:
 
     total = len(screens)
     if failures:
-        raise DWPError(f"Failed to set wallpaper on {failures} of {total} display(s)")
+        raise WalldyError(f"Failed to set wallpaper on {failures} of {total} display(s)")
 
     print(f"Wallpaper set on {total} display(s)")
 
 
 def inspect_file(path: str) -> None:
-    """Inspect an existing dynamic wallpaper file. Raises DWPError on failure."""
+    """Inspect an existing dynamic wallpaper file. Raises WalldyError on failure."""
     url = NSURL.fileURLWithPath_(os.path.abspath(path))
     source = Quartz.CGImageSourceCreateWithURL(url, None)
     if not source:
-        raise DWPError(f"Cannot read file: {path}")
+        raise WalldyError(f"Cannot read file: {path}")
 
     count = Quartz.CGImageSourceGetCount(source)
     print(f"File: {path}")
@@ -357,7 +357,7 @@ def inspect_file(path: str) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="dynawp",
+        prog="walldy",
         description="Create macOS Light/Dark dynamic wallpapers from images or hex color codes",
     )
 
@@ -417,7 +417,7 @@ def main(argv: list[str] | None = None) -> None:
         output_path = resolve_output_path(args.output)
 
         if os.path.exists(output_path) and not args.force:
-            raise DWPError(
+            raise WalldyError(
                 f"Output file already exists: {output_path}\n"
                 f"Use --force to overwrite."
             )
@@ -429,7 +429,7 @@ def main(argv: list[str] | None = None) -> None:
         create_wallpaper(light_img, dark_img, output_path)
 
         if not verify_output(output_path):
-            raise DWPError("Wallpaper was written but verification found issues")
+            raise WalldyError("Wallpaper was written but verification found issues")
 
         if args.set:
             set_wallpaper(output_path)
@@ -438,7 +438,7 @@ def main(argv: list[str] | None = None) -> None:
                 "      if unchanged, set it manually in System Settings > Wallpaper.",
                 file=sys.stderr,
             )
-    except DWPError as err:
+    except WalldyError as err:
         print(f"Error: {err}", file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:

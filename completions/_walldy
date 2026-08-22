@@ -1,6 +1,6 @@
-#compdef dynawp dwp
+#compdef walldy
 
-_dynawp() {
+_walldy() {
     local -a image_files
     image_files=(
         '*.jpg' '*.jpeg' '*.JPG' '*.JPEG'
@@ -22,4 +22,4 @@ _dynawp() {
         '2:dark image or hex color:_files -g "${(j: :)image_files}"'
 }
 
-_dynawp "$@"
+_walldy "$@"

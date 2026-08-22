@@ -1,13 +1,13 @@
-# dynawp
+# walldy
 
 Create wallpapers that switch between light and dark mode on macOS.
 
 ```bash
 # from images
-dynawp sunrise.jpg midnight.jpg --set
+walldy sunrise.jpg midnight.jpg --set
 
 # or even hex colors
-dynawp '#ffffff' '#1e1e2e' --set
+walldy '#ffffff' '#1e1e2e' --set
 ```
 
 Requires macOS 10.15 (Catalina) or later with Python 3.10+.
@@ -41,21 +41,21 @@ The first argument becomes the Light-mode frame, the second the Dark-mode frame 
 
 ```bash
 # two images
-dynawp sunrise.jpg midnight.jpg
+walldy sunrise.jpg midnight.jpg
 
 # solid hex colors
-dynawp '#ffffff' '#1e1e2e'
-dynawp '#fff' '#000'
+walldy '#ffffff' '#1e1e2e'
+walldy '#fff' '#000'
 
 # mix an image with a color background
-dynawp sunrise.png '#181825'
-dynawp '#f5e0dc' midnight.png
+walldy sunrise.png '#181825'
+walldy '#f5e0dc' midnight.png
 
 # create and apply immediately
-dynawp sunrise.jpg midnight.jpg --set
+walldy sunrise.jpg midnight.jpg --set
 
 # explicit output path and resolution
-dynawp sunrise.jpg midnight.jpg -r 3840x2160 -o ~/Pictures/wallpaper.heic
+walldy sunrise.jpg midnight.jpg -r 3840x2160 -o ~/Pictures/wallpaper.heic
 ```
 
 Every created file is re-opened and validated automatically, so a silent failure never leaves you with a broken wallpaper.
@@ -102,7 +102,7 @@ python -m unittest discover -s tests -v
 
 ## How it works
 
-macOS dynamic wallpapers are multi-image HEIC files with embedded Apple metadata. dynawp uses native Quartz APIs to package a 2-frame HEIC (Light at index 0, Dark at index 1) with the `apple_desktop:apr` appearance payload.
+macOS dynamic wallpapers are multi-image HEIC files with embedded Apple metadata. walldy uses native Quartz APIs to package a 2-frame HEIC (Light at index 0, Dark at index 1) with the `apple_desktop:apr` appearance payload.
 
 ## License
 
