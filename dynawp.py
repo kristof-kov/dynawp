@@ -370,7 +370,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("-r", "--resolution", metavar="WxH",
                         help="Target resolution: WIDTHxHEIGHT (e.g. 3840x2160) or 'auto'")
     parser.add_argument("--set", "-s", action="store_true",
-                        help="Set as wallpaper on all displays")
+                        help="Set as wallpaper on all displays (may not work on the primary display on macOS Sonoma+)")
 
     args = parser.parse_args(argv)
 
@@ -417,6 +417,11 @@ def main(argv: list[str] | None = None) -> None:
 
         if args.set:
             set_wallpaper(output_path)
+            print(
+                "note: on macOS Sonoma and later, --set may not update the primary display.\n"
+                "      if unchanged, set it manually in System Settings > Wallpaper.",
+                file=sys.stderr,
+            )
     except DWPError as err:
         print(f"Error: {err}", file=sys.stderr)
         sys.exit(1)

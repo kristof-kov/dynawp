@@ -67,7 +67,7 @@ Every created file is re-opened and validated automatically, so a silent failure
 | `light dark` | Image paths or hex colors (`#ffffff`, `fff`) for the Light and Dark frames |
 | `-o`, `--output` | Output file path (default: `output.heic`); `.heic` is appended when no extension is given, other extensions are rejected |
 | `-r`, `--resolution` | Target resolution (`WIDTHxHEIGHT`). Defaults to your primary display's resolution, same as `auto` |
-| `-s`, `--set` | Apply the wallpaper to all connected displays after generation |
+| `-s`, `--set` | Apply the wallpaper to all connected displays after generation (may not update primary display on macOS Sonoma+) |
 | `-i`, `--info <file>` | Inspect metadata and frame dimensions of a HEIC wallpaper |
 | `-v`, `--version` | Show version |
 | `-h`, `--help` | Show help message |
