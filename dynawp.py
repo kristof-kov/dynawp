@@ -209,8 +209,10 @@ def resolve_output_path(path: str) -> str:
     """
     Normalize the output path: dynamic wallpapers are always HEIC, so append
     '.heic' when no extension is given and reject any other extension.
+    Expands ~ to the user's home directory.
     Raises DWPError on unsupported extensions.
     """
+    path = os.path.expanduser(path)
     ext = os.path.splitext(path)[1].lower()
     if not ext:
         return path + ".heic"
@@ -302,11 +304,10 @@ def set_wallpaper(path: str) -> None:
             failures += 1
 
     total = len(screens)
-    ok = total - failures
-    if ok > 0:
-        print(f"Wallpaper set on {ok} display(s)")
     if failures:
-        raise DWPError(f"Failed to set wallpaper on {failures} display(s)")
+        raise DWPError(f"Failed to set wallpaper on {failures} of {total} display(s)")
+
+    print(f"Wallpaper set on {total} display(s)")
 
 
 def inspect_file(path: str) -> None:
@@ -371,6 +372,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Target resolution: WIDTHxHEIGHT (e.g. 3840x2160) or 'auto'")
     parser.add_argument("--set", "-s", action="store_true",
                         help="Set as wallpaper on all displays (may not work on the primary display on macOS Sonoma+)")
+    parser.add_argument("--force", "-f", action="store_true",
+                        help="Overwrite output file if it already exists")
 
     args = parser.parse_args(argv)
 
@@ -383,6 +386,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             parser.error("--info cannot be used with -r/--resolution")
         if args.output is not None:
             parser.error("--info cannot be used with -o/--output")
+        if args.force:
+            parser.error("--info cannot be used with --force")
     else:
         if args.light is None or args.dark is None:
             parser.error("two arguments required: image paths or hex color codes (or use --info <file>)")
@@ -410,6 +415,17 @@ def main(argv: list[str] | None = None) -> None:
         light_img, dark_img = resolve_inputs(args.light, args.dark, target_res)
 
         output_path = resolve_output_path(args.output)
+
+        if os.path.exists(output_path) and not args.force:
+            raise DWPError(
+                f"Output file already exists: {output_path}\n"
+                f"Use --force to overwrite."
+            )
+
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+
         create_wallpaper(light_img, dark_img, output_path)
 
         if not verify_output(output_path):
