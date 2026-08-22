@@ -87,6 +87,18 @@ class TestImageOperations(unittest.TestCase):
         with self.assertRaises(DWPError):
             dynawp.load_image("nonexistent_file_path.png")
 
+    def test_load_image_corrupt_file(self):
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            tmp.write(b"not an image file content")
+            tmp_path = tmp.name
+
+        try:
+            with self.assertRaises(DWPError):
+                dynawp.load_image(tmp_path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
 
 class TestWallpaperEndToEnd(unittest.TestCase):
     def test_create_and_verify_solid_wallpaper(self):
@@ -134,6 +146,20 @@ class TestWallpaperEndToEnd(unittest.TestCase):
                     (Quartz.CGImageGetWidth(img), Quartz.CGImageGetHeight(img)), (80, 80),
                 )
 
+    def test_main_happy_path(self):
+        with tempfile.NamedTemporaryFile(suffix=".heic", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            with patch("sys.stdout"):
+                dynawp.main(["#fff", "#000", "-o", tmp_path, "--force"])
+            self.assertTrue(os.path.isfile(tmp_path))
+            with patch("sys.stdout"):
+                self.assertTrue(dynawp.verify_output(tmp_path))
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
 
 class TestOutputPath(unittest.TestCase):
     def test_resolve_output_path_appends_heic(self):
@@ -149,6 +175,12 @@ class TestOutputPath(unittest.TestCase):
             with self.subTest(name=name):
                 with self.assertRaises(DWPError):
                     dynawp.resolve_output_path(name)
+
+    def test_resolve_output_path_tilde(self):
+        self.assertEqual(
+            dynawp.resolve_output_path("~/wallpaper"),
+            os.path.expanduser("~/wallpaper.heic"),
+        )
 
 
 class TestCLIArgs(unittest.TestCase):
@@ -183,6 +215,10 @@ class TestCLIArgs(unittest.TestCase):
             dynawp.parse_args(["--version"])
         self.assertEqual(ctx.exception.code, 0)
 
+    def test_parse_args_force_flag(self):
+        self.assertTrue(dynawp.parse_args(["#fff", "#000", "--force"]).force)
+        self.assertFalse(dynawp.parse_args(["#fff", "#000"]).force)
+
     def test_parse_args_info_valid(self):
         args = dynawp.parse_args(["--info", "test.heic"])
         self.assertEqual(args.info, "test.heic")
@@ -195,6 +231,7 @@ class TestCLIArgs(unittest.TestCase):
             ["--set"],
             ["-r", "1920x1080"],
             ["-o", "other.heic"],
+            ["--force"],
         ):
             with self.subTest(extra=extra):
                 with self.assertRaises(SystemExit):
@@ -355,6 +392,83 @@ class TestInspectFile(unittest.TestCase):
                     self.assertIn(label, mock_out.getvalue())
                 finally:
                     os.remove(tmp_path)
+
+
+class TestSetWallpaper(unittest.TestCase):
+    @patch("dynawp.NSScreen")
+    @patch("dynawp.NSWorkspace")
+    def test_set_wallpaper_success_and_failure(self, mock_workspace_cls, mock_screen_cls):
+        mock_workspace = MagicMock()
+        mock_workspace_cls.sharedWorkspace.return_value = mock_workspace
+
+        screen1 = MagicMock()
+        screen2 = MagicMock()
+        mock_screen_cls.screens.return_value = [screen1, screen2]
+
+        # Success case
+        mock_workspace.setDesktopImageURL_forScreen_options_error_.side_effect = [
+            (True, None),
+            (True, None),
+        ]
+        with patch("sys.stdout"):
+            dynawp.set_wallpaper("test.heic")
+        self.assertEqual(mock_workspace.setDesktopImageURL_forScreen_options_error_.call_count, 2)
+
+        # Partial failure case
+        mock_workspace.setDesktopImageURL_forScreen_options_error_.reset_mock()
+        mock_workspace.setDesktopImageURL_forScreen_options_error_.side_effect = [
+            (True, None),
+            (False, "error"),
+        ]
+        with patch("sys.stderr"):
+            with self.assertRaises(DWPError):
+                dynawp.set_wallpaper("test.heic")
+
+
+class TestLoadOrCreate(unittest.TestCase):
+    def test_disambiguation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            orig_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                # When file doesn't exist, treated as hex color
+                img_color = dynawp._load_or_create("aabbcc", (10, 10))
+                self.assertIsNotNone(img_color)
+
+                # Create a file named 'aabbcc'
+                _write_test_image("aabbcc", 10, 10, 1.0, 1.0, 1.0)
+
+                # When file exists, treated as file
+                img_file = dynawp._load_or_create("aabbcc", (10, 10))
+                self.assertIsNotNone(img_file)
+
+                # #aabbcc always treated as color even if file named '#aabbcc' exists
+                _write_test_image("#aabbcc", 10, 10, 1.0, 1.0, 1.0)
+                img_hash = dynawp._load_or_create("#aabbcc", (10, 10))
+                self.assertIsNotNone(img_hash)
+            finally:
+                os.chdir(orig_cwd)
+
+
+class TestOverwriteProtection(unittest.TestCase):
+    def test_overwrite_protection(self):
+        with tempfile.NamedTemporaryFile(suffix=".heic", delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            # Without --force
+            with patch("sys.stderr"):
+                with self.assertRaises(SystemExit) as ctx:
+                    dynawp.main(["#fff", "#000", "-o", tmp_path])
+                self.assertEqual(ctx.exception.code, 1)
+
+            # With --force
+            with patch("sys.stdout"):
+                dynawp.main(["#fff", "#000", "-o", tmp_path, "--force"])
+            self.assertTrue(os.path.isfile(tmp_path))
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
 
 if __name__ == "__main__":
